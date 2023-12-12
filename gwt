@@ -1,0 +1,97 @@
+#!/bin/bash
+
+# Usage: gwt [add|remove] [branch_name] [option]
+
+COMMAND="${1}"
+BRANCH="${2}"
+FORCE_FLAG="${3}"
+
+# Get the common .git directory
+GIT_COMMON_DIR="$(git rev-parse --git-common-dir)"
+if [ $? -ne 0 ]; then
+    echo "Error: Unable to find the .git directory."
+    exit 1
+fi
+
+# Get the top-level directory of the Git repository
+GIT_ROOT="$(git rev-parse --show-toplevel)"
+if [ $? -ne 0 ]; then
+    echo "Error: Must be run within a git repository."
+    exit 1
+fi
+
+# Remove trailing slash from BRANCH if it exists
+BRANCH="${BRANCH%/}"
+
+# Check if the branch name contains a slash and handle it
+if [[ "$BRANCH" == *"/"* ]]; then
+    # Use only the part of the branch name before the first slash for worktree directory name
+    WORKTREE_BRANCH_NAME="${BRANCH%%/*}"
+else
+    # If no slash, use the full branch name
+    WORKTREE_BRANCH_NAME="${BRANCH}"
+fi
+
+# Construct the worktree path
+WORKTREE_PATH="${GIT_ROOT}/worktrees/${WORKTREE_BRANCH_NAME}"
+
+# Create the worktree directory if it does not exist
+if [ ! -d "${GIT_ROOT}/worktrees" ]; then
+    echo "Creating worktree directory at ${GIT_ROOT}/worktrees"
+    mkdir -p "${GIT_ROOT}/worktrees"
+fi
+
+case "${COMMAND}" in
+  add)
+    # Check if the branch exists
+    if git rev-parse --verify "${BRANCH}" >/dev/null 2>&1; then
+        echo "Branch '${BRANCH}' already exists. Creating worktree..."
+    else
+        echo "Branch '${BRANCH}' does not exist. Creating branch and worktree..."
+        # Create a new branch
+        git branch "${BRANCH}"
+    fi
+    # Create the worktree
+    if ! git worktree add "${WORKTREE_PATH}" "${BRANCH}"; then
+        echo "Error: Failed to create worktree."
+        exit 1
+    fi
+    ;;
+    remove)
+    if [ -d "${WORKTREE_PATH}" ]; then
+        # Remove the worktree with or without force
+        if [ "${FORCE_FLAG}" = "--force" ]; then
+            if ! git worktree remove --force "${WORKTREE_PATH}"; then
+                echo "Error: Failed to remove worktree."
+                exit 1
+            fi
+        else
+            if ! git worktree remove "${WORKTREE_PATH}"; then
+                echo "Error: Failed to remove worktree."
+                exit 1
+            fi
+        fi
+
+        # Delete the branch with or without force
+        if [ "${FORCE_FLAG}" = "--force" ]; then
+            if ! git branch -D "${BRANCH}"; then
+                echo "Error: Failed to delete branch."
+                exit 1
+            fi
+        else
+            if ! git branch -d "${BRANCH}"; then
+                echo "Error: Failed to delete branch."
+                exit 1
+            fi
+        fi
+
+        # Prune the worktree metadata
+        git worktree prune
+    else
+        echo "Worktree path '${WORKTREE_PATH}' does not exist."
+    fi
+    ;;
+  *)
+    echo "Invalid command. Usage: gwt [add|remove] [branch_name] [option]"
+    ;;
+esac

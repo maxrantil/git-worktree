@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Usage: ./gwts
+
+git worktree list | while read -r line; do
+  WORKTREE_PATH=$(echo "$line" | awk '{print $1}')
+  BRANCH=$(echo "$line" | awk '{print $3}')
+  echo "Worktree: $WORKTREE_PATH"
+  echo "Branch: $BRANCH"
+  (cd "$WORKTREE_PATH" && git status -s)
+  echo ""
+done
